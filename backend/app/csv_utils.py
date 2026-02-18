@@ -1,10 +1,46 @@
 import csv
 import io
+import unicodedata
 from datetime import datetime
 from typing import Dict, List, Tuple
 
 
 EXPECTED_HEADERS = ["data", "valor", "historico"]
+HEADER_ALIASES = {
+    "data": {
+        "data",
+        "data lancamento",
+        "data lançamento",
+        "data de lancamento",
+        "data de lançamento",
+        "dt",
+        "date",
+    },
+    "valor": {
+        "valor",
+        "valor r$",
+        "valor (r$)",
+        "valor (rs)",
+        "valor (r$)",
+        "valor (rs)",
+        "valor r$",
+        "amount",
+    },
+    "historico": {
+        "historico",
+        "histórico",
+        "descricao",
+        "descrição",
+        "descricao do lancamento",
+        "descricao do lançamento",
+        "descricao historico",
+        "descricao histórico",
+        "historico descricao",
+        "hist",
+        "detalhe",
+        "details",
+    },
+}
 
 
 def detect_delimiter(sample: str) -> str:
@@ -16,7 +52,18 @@ def detect_delimiter(sample: str) -> str:
 
 
 def normalize_header(name: str) -> str:
-    return name.strip().lower()
+    raw = name.strip().lower().replace("\ufeff", "")
+    normalized = unicodedata.normalize("NFD", raw)
+    without_accents = "".join(
+        ch for ch in normalized if unicodedata.category(ch) != "Mn"
+    )
+    return " ".join(without_accents.split())
+
+
+NORMALIZED_ALIASES = {
+    canonical: {normalize_header(alias) for alias in aliases}
+    for canonical, aliases in HEADER_ALIASES.items()
+}
 
 
 def parse_date(value: str) -> str:
@@ -52,16 +99,49 @@ def parse_value(value: str) -> str:
     return raw
 
 
+def _resolve_header(field: str) -> str | None:
+    normalized = normalize_header(field)
+    for canonical, aliases in NORMALIZED_ALIASES.items():
+        if normalized in aliases:
+            return canonical
+    return None
+
+
+def _find_header_start(lines: List[str]) -> Tuple[int, str]:
+    for idx, line in enumerate(lines):
+        if not line.strip():
+            continue
+        delimiter = detect_delimiter(line)
+        if line.count(delimiter) == 0:
+            continue
+        fields = [normalize_header(part) for part in line.split(delimiter)]
+        hits = set()
+        for field in fields:
+            resolved = _resolve_header(field)
+            if resolved:
+                hits.add(resolved)
+        if hits.issuperset(EXPECTED_HEADERS):
+            return idx, delimiter
+    # fallback: use first line delimiter if no header was found
+    first_line = lines[0] if lines else ""
+    return 0, detect_delimiter(first_line)
+
+
 def read_csv(content: bytes) -> Tuple[List[Dict[str, str]], List[str]]:
     text = content.decode("utf-8", errors="replace")
-    sample_line = text.splitlines()[0] if text.splitlines() else ""
-    delimiter = detect_delimiter(sample_line)
-
-    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+    lines = text.splitlines()
+    header_idx, delimiter = _find_header_start(lines)
+    csv_text = "\n".join(lines[header_idx:])
+    reader = csv.DictReader(io.StringIO(csv_text), delimiter=delimiter)
     if not reader.fieldnames:
         raise ValueError("CSV sem cabecalho")
 
-    header_map = {normalize_header(h): h for h in reader.fieldnames}
+    header_map = {}
+    for field in reader.fieldnames:
+        resolved = _resolve_header(field)
+        if resolved and resolved not in header_map:
+            header_map[resolved] = field
+
     missing = [h for h in EXPECTED_HEADERS if h not in header_map]
     if missing:
         raise ValueError(f"CSV sem colunas obrigatorias: {', '.join(missing)}")
