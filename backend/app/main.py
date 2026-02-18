@@ -272,6 +272,22 @@ def _sort_requalified_rows(
     return sorted(rows, key=key_fn, reverse=reverse)
 
 
+def _filter_requalified_rows(
+    rows: List[Dict[str, Any]], search: Optional[str]
+) -> List[Dict[str, Any]]:
+    if not search:
+        return rows
+    term = search.strip().lower()
+    if not term:
+        return rows
+    filtered = []
+    for row in rows:
+        historico = str(row.get("historico") or "").lower()
+        if term in historico:
+            filtered.append(row)
+    return filtered
+
+
 def _load_output_csv(supabase, bucket: str, path: str) -> List[Dict[str, Any]]:
     data = supabase.storage.from_(bucket).download(path)
     if isinstance(data, bytes):
@@ -705,10 +721,12 @@ def list_requalified_items(
     page_size: int = Query(25, ge=1, le=200),
     sort_by: str = Query("data"),
     sort_dir: str = Query("desc"),
+    search: Optional[str] = Query(None),
 ):
     supabase = _get_client()
     settings = get_settings()
     all_rows = _load_all_output_rows(supabase, settings)
+    all_rows = _filter_requalified_rows(all_rows, search)
     all_rows = _sort_requalified_rows(all_rows, sort_by, sort_dir)
     total_rows = len(all_rows)
     start = (page - 1) * page_size
@@ -727,10 +745,12 @@ def list_requalified_items(
 def download_requalified_items(
     sort_by: str = Query("data"),
     sort_dir: str = Query("desc"),
+    search: Optional[str] = Query(None),
 ):
     supabase = _get_client()
     settings = get_settings()
     all_rows = _load_all_output_rows(supabase, settings)
+    all_rows = _filter_requalified_rows(all_rows, search)
     all_rows = _sort_requalified_rows(all_rows, sort_by, sort_dir)
     output_bytes = _build_output_csv(all_rows)
 

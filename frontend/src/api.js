@@ -84,22 +84,30 @@ export function getDownloadUrl(importId) {
   return `${API_BASE}/imports/${importId}/download`;
 }
 
-export async function fetchRequalifiedItems(page, pageSize, sortBy, sortDir) {
+export async function fetchRequalifiedItems(
+  page,
+  pageSize,
+  sortBy,
+  sortDir,
+  search
+) {
   const params = new URLSearchParams();
   params.set("page", String(page));
   params.set("page_size", String(pageSize));
   if (sortBy) params.set("sort_by", sortBy);
   if (sortDir) params.set("sort_dir", sortDir);
+  if (search) params.set("search", search);
   const response = await fetch(
     `${API_BASE}/requalified-items?${params.toString()}`
   );
   return handleResponse(response);
 }
 
-export function getRequalifiedItemsDownloadUrl(sortBy, sortDir) {
+export function getRequalifiedItemsDownloadUrl(sortBy, sortDir, search) {
   const params = new URLSearchParams();
   if (sortBy) params.set("sort_by", sortBy);
   if (sortDir) params.set("sort_dir", sortDir);
+  if (search) params.set("search", search);
   const query = params.toString();
   return `${API_BASE}/requalified-items/download${query ? `?${query}` : ""}`;
 }

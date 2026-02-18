@@ -66,6 +66,17 @@ export default function App() {
   const [allItemsTotal, setAllItemsTotal] = useState(0);
   const [allItemsSortBy, setAllItemsSortBy] = useState("data");
   const [allItemsSortDir, setAllItemsSortDir] = useState("desc");
+  const [allItemsSearch, setAllItemsSearch] = useState("");
+  const [quickRuleOpen, setQuickRuleOpen] = useState(false);
+  const [quickRule, setQuickRule] = useState({
+    keyword: "",
+    code: "",
+    description: "",
+    priority: 1,
+    rule_type: "financeira"
+  });
+
+  const allItemsSearchTerm = allItemsSearch.trim();
 
   useEffect(() => {
     if (activeTab !== "regras") return;
@@ -91,7 +102,14 @@ export default function App() {
   useEffect(() => {
     if (activeTab !== "requalificar") return;
     loadAllRequalifiedItems();
-  }, [activeTab, allItemsPage, allItemsPageSize, allItemsSortBy, allItemsSortDir]);
+  }, [
+    activeTab,
+    allItemsPage,
+    allItemsPageSize,
+    allItemsSortBy,
+    allItemsSortDir,
+    allItemsSearchTerm
+  ]);
 
   useEffect(() => {
     if (!status && !error) return;
@@ -101,6 +119,17 @@ export default function App() {
     }, 3000);
     return () => clearTimeout(timer);
   }, [status, error]);
+
+  useEffect(() => {
+    if (!quickRuleOpen) return;
+    const handleKey = (event) => {
+      if (event.key === "Escape") {
+        setQuickRuleOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [quickRuleOpen]);
 
   const pageCount = useMemo(() => {
     return Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
@@ -257,7 +286,8 @@ export default function App() {
         allItemsPage,
         allItemsPageSize,
         allItemsSortBy,
-        allItemsSortDir
+        allItemsSortDir,
+        allItemsSearchTerm
       );
       setAllRequalifiedItems(data.rows || []);
       setAllItemsTotal(data.total_rows || 0);
@@ -341,6 +371,50 @@ export default function App() {
       await loadAllRequalifiedItems();
     } catch (err) {
       setError(err.message || "Falha ao remover importacao");
+      setStatus("");
+    }
+  }
+
+  function openQuickRuleModal(selectedText) {
+    const keyword = selectedText.trim();
+    if (!keyword) return;
+    const defaultRuleType =
+      activeTab === "requalificar" ? requalifyRuleType : ruleTypeFilter;
+    setQuickRule({
+      keyword,
+      code: "",
+      description: "",
+      priority: 1,
+      rule_type: defaultRuleType || "financeira"
+    });
+    setQuickRuleOpen(true);
+  }
+
+  function handleHistoricoSelection() {
+    const selection = window.getSelection?.();
+    const selectedText = selection ? selection.toString() : "";
+    if (!selectedText.trim()) return;
+    openQuickRuleModal(selectedText);
+  }
+
+  async function handleQuickCreateRule(event) {
+    event.preventDefault();
+    setError("");
+    setStatus("Salvando qualificacao...");
+
+    try {
+      const payload = {
+        ...quickRule,
+        priority: Number(quickRule.priority)
+      };
+      await createQualification(payload);
+      setStatus("Qualificacao salva.");
+      setQuickRuleOpen(false);
+      if (activeTab === "regras") {
+        await loadQualifications(ruleTypeFilter);
+      }
+    } catch (err) {
+      setError(err.message || "Falha ao salvar qualificacao");
       setStatus("");
     }
   }
@@ -951,11 +1025,24 @@ export default function App() {
                 <h2>Itens requalificados (todas importacoes)</h2>
                 <div className="table-actions">
                   <span>{allItemsTotal} itens</span>
+                  <input
+                    className="search-input"
+                    type="text"
+                    value={allItemsSearch}
+                    onChange={(event) => {
+                      setAllItemsSearch(event.target.value);
+                      setAllItemsPage(1);
+                    }}
+                    placeholder="Pesquisar historico..."
+                    aria-label="Pesquisar historico"
+                  />
+                  <span>{allItemsTotal} itens</span>
                   <a
                     className="link"
                     href={getRequalifiedItemsDownloadUrl(
                       allItemsSortBy,
-                      allItemsSortDir
+                      allItemsSortDir,
+                      allItemsSearchTerm
                     )}
                   >
                     Baixar CSV
@@ -1061,7 +1148,13 @@ export default function App() {
                         <td>{item.conta}</td>
                         <td>{item.data}</td>
                         <td>{item.valor}</td>
-                        <td>{item.historico}</td>
+                        <td
+                          className="selectable"
+                          title="Selecione um texto para criar uma regra"
+                          onMouseUp={handleHistoricoSelection}
+                        >
+                          {item.historico}
+                        </td>
                         <td>{item.codigo_qualificacao}</td>
                         <td>{item.descricao_qualificacao}</td>
                       </tr>
@@ -1121,6 +1214,113 @@ export default function App() {
           </>
         ) : null}
       </main>
+
+      {quickRuleOpen ? (
+        <div
+          className="modal-backdrop"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setQuickRuleOpen(false);
+            }
+          }}
+        >
+          <div className="modal">
+            <div className="modal-header">
+              <h2>Nova qualificacao</h2>
+              <button
+                className="modal-close"
+                type="button"
+                onClick={() => setQuickRuleOpen(false)}
+              >
+                Fechar
+              </button>
+            </div>
+            <form onSubmit={handleQuickCreateRule}>
+              <div className="field">
+                <label>Tipo de regra</label>
+                <select
+                  value={quickRule.rule_type}
+                  onChange={(event) =>
+                    setQuickRule({
+                      ...quickRule,
+                      rule_type: event.target.value
+                    })
+                  }
+                >
+                  {RULE_TYPES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Palavra-chave</label>
+                <input
+                  value={quickRule.keyword}
+                  onChange={(event) =>
+                    setQuickRule({ ...quickRule, keyword: event.target.value })
+                  }
+                  placeholder="Ex: TARIFA"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label>Codigo</label>
+                <input
+                  value={quickRule.code}
+                  onChange={(event) =>
+                    setQuickRule({ ...quickRule, code: event.target.value })
+                  }
+                  placeholder="Ex: DESP"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label>Descricao</label>
+                <input
+                  value={quickRule.description}
+                  onChange={(event) =>
+                    setQuickRule({
+                      ...quickRule,
+                      description: event.target.value
+                    })
+                  }
+                  placeholder="Ex: Tarifas bancarias"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label>Prioridade</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={quickRule.priority}
+                  onChange={(event) =>
+                    setQuickRule({
+                      ...quickRule,
+                      priority: event.target.value
+                    })
+                  }
+                  required
+                />
+              </div>
+              <div className="actions">
+                <button className="primary" type="submit">
+                  Salvar regra
+                </button>
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => setQuickRuleOpen(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
