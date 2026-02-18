@@ -66,6 +66,9 @@ export default function App() {
   const [allItemsTotal, setAllItemsTotal] = useState(0);
   const [allItemsSortBy, setAllItemsSortBy] = useState("data");
   const [allItemsSortDir, setAllItemsSortDir] = useState("desc");
+  const [allItemsSearch, setAllItemsSearch] = useState("");
+
+  const allItemsSearchTerm = allItemsSearch.trim();
 
   useEffect(() => {
     if (activeTab !== "regras") return;
@@ -91,7 +94,14 @@ export default function App() {
   useEffect(() => {
     if (activeTab !== "requalificar") return;
     loadAllRequalifiedItems();
-  }, [activeTab, allItemsPage, allItemsPageSize, allItemsSortBy, allItemsSortDir]);
+  }, [
+    activeTab,
+    allItemsPage,
+    allItemsPageSize,
+    allItemsSortBy,
+    allItemsSortDir,
+    allItemsSearchTerm
+  ]);
 
   useEffect(() => {
     if (!status && !error) return;
@@ -257,7 +267,8 @@ export default function App() {
         allItemsPage,
         allItemsPageSize,
         allItemsSortBy,
-        allItemsSortDir
+        allItemsSortDir,
+        allItemsSearchTerm
       );
       setAllRequalifiedItems(data.rows || []);
       setAllItemsTotal(data.total_rows || 0);
@@ -951,11 +962,24 @@ export default function App() {
                 <h2>Itens requalificados (todas importacoes)</h2>
                 <div className="table-actions">
                   <span>{allItemsTotal} itens</span>
+                  <input
+                    className="search-input"
+                    type="text"
+                    value={allItemsSearch}
+                    onChange={(event) => {
+                      setAllItemsSearch(event.target.value);
+                      setAllItemsPage(1);
+                    }}
+                    placeholder="Pesquisar historico..."
+                    aria-label="Pesquisar historico"
+                  />
+                  <span>{allItemsTotal} itens</span>
                   <a
                     className="link"
                     href={getRequalifiedItemsDownloadUrl(
                       allItemsSortBy,
-                      allItemsSortDir
+                      allItemsSortDir,
+                      allItemsSearchTerm
                     )}
                   >
                     Baixar CSV

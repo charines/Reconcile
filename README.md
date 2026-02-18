@@ -49,6 +49,35 @@ MVP para qualificacao de extratos bancarios com React + FastAPI + Supabase.
    npm run dev
    ```
 
+## Deploy no Render (monorepo)
+### Backend (FastAPI) - Web Service
+1. Crie um **Web Service** no Render conectado ao repo.
+2. Configure:
+   - Root Directory: `backend`
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+3. Variaveis de ambiente (Render -> Environment):
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `SUPABASE_INPUTS_BUCKET` (ex: `inputs`)
+   - `SUPABASE_OUTPUTS_BUCKET` (ex: `outputs`)
+   - `CORS_ORIGIN` (URL do frontend no Render)
+4. (Opcional) Health Check Path: `/health`
+5. Habilite auto-deploy do branch `main`.
+
+### Frontend (React/Vite) - Static Site
+1. Crie um **Static Site** no Render conectado ao mesmo repo.
+2. Configure:
+   - Root Directory: `frontend`
+   - Build Command: `npm install && npm run build`
+   - Publish Directory: `dist`
+3. Variaveis de ambiente:
+   - `VITE_API_BASE` = URL do backend no Render (ex: `https://seu-backend.onrender.com`)
+4. Habilite auto-deploy do branch `main`.
+
+### Observacao importante
+- Depois de obter as URLs finais do Render, atualize `CORS_ORIGIN` no backend e `VITE_API_BASE` no frontend e force um novo deploy.
+
 ## Formato do CSV de entrada
 - Colunas obrigatorias: `data,valor,historico`
 - Separador `,` ou `;` (detectado automaticamente)
