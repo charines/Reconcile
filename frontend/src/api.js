@@ -8,8 +8,9 @@ async function handleResponse(response) {
   return response.json();
 }
 
-export async function listQualifications() {
-  const response = await fetch(`${API_BASE}/qualifications`);
+export async function listQualifications(ruleType) {
+  const params = ruleType ? `?rule_type=${encodeURIComponent(ruleType)}` : "";
+  const response = await fetch(`${API_BASE}/qualifications${params}`);
   return handleResponse(response);
 }
 
@@ -22,10 +23,52 @@ export async function createQualification(payload) {
   return handleResponse(response);
 }
 
+export async function updateQualification(id, payload) {
+  const response = await fetch(`${API_BASE}/qualifications/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return handleResponse(response);
+}
+
+export async function deleteQualification(id) {
+  const response = await fetch(`${API_BASE}/qualifications/${id}`, {
+    method: "DELETE"
+  });
+  return handleResponse(response);
+}
+
 export async function uploadImport(formData) {
   const response = await fetch(`${API_BASE}/imports`, {
     method: "POST",
     body: formData
+  });
+  return handleResponse(response);
+}
+
+export async function listImports({ page, pageSize, sortBy, sortDir }) {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  params.set("sort_by", sortBy);
+  params.set("sort_dir", sortDir);
+  const response = await fetch(`${API_BASE}/imports?${params.toString()}`);
+  return handleResponse(response);
+}
+
+export async function requalifyImports(payload) {
+  const response = await fetch(`${API_BASE}/imports/requalify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return handleResponse(response);
+}
+
+export async function deleteImport(id) {
+  const response = await fetch(`${API_BASE}/imports/${id}`, {
+    method: "DELETE"
   });
   return handleResponse(response);
 }
@@ -39,4 +82,24 @@ export async function fetchImportPreview(importId, page, pageSize) {
 
 export function getDownloadUrl(importId) {
   return `${API_BASE}/imports/${importId}/download`;
+}
+
+export async function fetchRequalifiedItems(page, pageSize, sortBy, sortDir) {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  if (sortBy) params.set("sort_by", sortBy);
+  if (sortDir) params.set("sort_dir", sortDir);
+  const response = await fetch(
+    `${API_BASE}/requalified-items?${params.toString()}`
+  );
+  return handleResponse(response);
+}
+
+export function getRequalifiedItemsDownloadUrl(sortBy, sortDir) {
+  const params = new URLSearchParams();
+  if (sortBy) params.set("sort_by", sortBy);
+  if (sortDir) params.set("sort_dir", sortDir);
+  const query = params.toString();
+  return `${API_BASE}/requalified-items/download${query ? `?${query}` : ""}`;
 }

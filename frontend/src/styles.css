@@ -52,6 +52,37 @@ body::after {
   animation: fadeIn 0.6s ease;
 }
 
+.flash {
+  position: sticky;
+  top: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #e7f5ef;
+  color: #0f5132;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+
+.flash.error {
+  background: #fdecea;
+  color: #7f1d1d;
+}
+
+.flash-close {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 0.85rem;
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -140,12 +171,14 @@ label {
 input[type="text"],
 input[type="number"],
 input[type="file"],
-input:not([type]) {
+input:not([type]),
+select {
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--border);
   font-family: inherit;
   font-size: 0.95rem;
+  background: #fff;
 }
 
 button {
@@ -174,9 +207,53 @@ button.ghost {
   border: 1px solid var(--border);
 }
 
+button.danger {
+  background: #b91c1c;
+  color: #fff;
+}
+
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.tabs {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.tab {
+  background: var(--bg-accent);
+  color: var(--primary-dark);
+  border: 1px solid var(--border);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.tab.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(15, 93, 94, 0.3);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.small {
+  padding: 8px 12px;
+  font-size: 0.85rem;
 }
 
 .table-card {
@@ -214,6 +291,18 @@ th {
   font-weight: 600;
 }
 
+.sort {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .meta {
   display: flex;
   flex-wrap: wrap;
@@ -228,6 +317,39 @@ th {
   align-items: center;
   margin-top: 16px;
   font-weight: 600;
+}
+
+.pagination-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.page-size {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.requalify-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.requalify-controls {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 0;
 }
 
 .link {
