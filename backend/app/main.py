@@ -3,6 +3,7 @@ import io
 import os
 import re
 import uuid
+import unicodedata
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Literal
 
@@ -100,6 +101,31 @@ class RequalifiedItemsResponse(BaseModel):
     rows: List[Dict[str, Any]]
 
 
+class RuleCount(BaseModel):
+    id: Optional[str] = None
+    keyword: Optional[str] = None
+    code: Optional[str] = None
+    description: Optional[str] = None
+    rule_type: Optional[RuleType] = None
+    count: int
+
+
+class UnqualifiedHistory(BaseModel):
+    historico: str
+    count: int
+
+
+class DashboardResponse(BaseModel):
+    total_records: int
+    total_companies: int
+    total_accounts: int
+    total_imports: int
+    total_rules: int
+    unqualified_records: int
+    items_per_rule: List[RuleCount]
+    unqualified_histories: List[UnqualifiedHistory]
+
+
 def _get_client():
     try:
         return get_supabase_client()
@@ -138,8 +164,26 @@ def _load_qualifications(supabase, rule_type: str) -> List[Dict[str, Any]]:
         raise HTTPException(status_code=500, detail=error)
     qualifications = response.data or []
     for q in qualifications:
-        q["_keyword_lower"] = (q.get("keyword") or "").lower()
+        q["_keyword_norm"] = _normalize_text(q.get("keyword") or "")
     return qualifications
+
+
+def _normalize_text(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return ""
+    raw = (
+        raw.replace("“", "\"")
+        .replace("”", "\"")
+        .replace("‘", "'")
+        .replace("’", "'")
+    )
+    normalized = unicodedata.normalize("NFD", raw)
+    without_accents = "".join(
+        ch for ch in normalized if unicodedata.category(ch) != "Mn"
+    )
+    cleaned = re.sub(r"[^0-9a-z]+", " ", without_accents)
+    return " ".join(cleaned.split())
 
 
 def _apply_qualifications(
@@ -153,11 +197,11 @@ def _apply_qualifications(
     output_rows = []
     for row in rows:
         historico = row.get("historico", "")
-        historico_lower = historico.lower()
+        historico_norm = _normalize_text(historico)
         match = None
         for q in qualifications:
-            key = q.get("_keyword_lower", "")
-            if key and key in historico_lower:
+            key = q.get("_keyword_norm", "")
+            if key and key in historico_norm:
                 match = q
                 break
 
@@ -270,6 +314,72 @@ def _sort_requalified_rows(
         return str(value).lower()
 
     return sorted(rows, key=key_fn, reverse=reverse)
+
+
+def _count_unique(values: List[str]) -> int:
+    cleaned = {str(value).strip() for value in values if str(value).strip()}
+    return len(cleaned)
+
+
+def _build_rule_counts(
+    qualifications: List[Dict[str, Any]],
+    rows: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    historicos_norm = [
+        _normalize_text(row.get("historico") or "") for row in rows
+    ]
+
+    results: List[Dict[str, Any]] = []
+    for q in qualifications:
+        code = str(q.get("code") or "").strip()
+        desc = str(q.get("description") or "").strip()
+        keyword_norm = _normalize_text(q.get("keyword") or "")
+        count = 0
+        if keyword_norm:
+            count = sum(
+                1 for historico in historicos_norm if keyword_norm in historico
+            )
+        results.append(
+            {
+                "id": q.get("id"),
+                "keyword": q.get("keyword"),
+                "code": code or None,
+                "description": desc or None,
+                "rule_type": q.get("rule_type"),
+                "count": count,
+            }
+        )
+
+    results.sort(
+        key=lambda item: (
+            -item.get("count", 0),
+            str(item.get("code") or ""),
+            str(item.get("description") or ""),
+        )
+    )
+    return results
+
+
+def _build_unqualified_histories(
+    rows: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    counts: Dict[str, int] = {}
+    for row in rows:
+        code = str(row.get("codigo_qualificacao") or "").strip()
+        desc = str(row.get("descricao_qualificacao") or "").strip()
+        if code or desc:
+            continue
+        historico = str(row.get("historico") or "").strip()
+        if not historico:
+            continue
+        counts[historico] = counts.get(historico, 0) + 1
+
+    results = [
+        {"historico": historico, "count": count}
+        for historico, count in counts.items()
+    ]
+    results.sort(key=lambda item: (-item["count"], item["historico"]))
+    return results
 
 
 def _filter_requalified_rows(
@@ -738,6 +848,63 @@ def list_requalified_items(
         page=page,
         page_size=page_size,
         rows=rows,
+    )
+
+
+@app.get("/dashboard", response_model=DashboardResponse)
+def get_dashboard():
+    supabase = _get_client()
+    settings = get_settings()
+
+    all_rows = _load_all_output_rows(supabase, settings)
+    total_records = len(all_rows)
+
+    companies = [str(row.get("empresa") or "") for row in all_rows]
+    total_companies = _count_unique(companies)
+
+    account_keys = []
+    for row in all_rows:
+        agencia = str(row.get("agencia") or "").strip()
+        conta = str(row.get("conta") or "").strip()
+        if not agencia and not conta:
+            continue
+        account_keys.append(f"{agencia}::{conta}")
+    total_accounts = _count_unique(account_keys)
+
+    imports_response = (
+        supabase.table("imports").select("id", count="exact").execute()
+    )
+    error = _get_error(imports_response)
+    if error:
+        raise HTTPException(status_code=500, detail=error)
+    total_imports = (
+        imports_response.count
+        if hasattr(imports_response, "count") and imports_response.count is not None
+        else len(imports_response.data or [])
+    )
+
+    qualifications_response = (
+        supabase.table("qualifications").select("*").execute()
+    )
+    error = _get_error(qualifications_response)
+    if error:
+        raise HTTPException(status_code=500, detail=error)
+    qualifications = qualifications_response.data or []
+    total_rules = len(qualifications)
+
+    items_per_rule = _build_rule_counts(qualifications, all_rows)
+    unqualified_histories = _build_unqualified_histories(all_rows)
+    unqualified_records = sum(item["count"] for item in unqualified_histories)
+
+    return DashboardResponse(
+        total_records=total_records,
+        total_companies=total_companies,
+        total_accounts=total_accounts,
+        total_imports=total_imports,
+        total_rules=total_rules,
+        unqualified_records=unqualified_records,
+        items_per_rule=items_per_rule,
+        unqualified_histories=unqualified_histories,
     )
 
 

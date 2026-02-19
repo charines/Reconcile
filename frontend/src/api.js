@@ -111,3 +111,8 @@ export function getRequalifiedItemsDownloadUrl(sortBy, sortDir, search) {
   const query = params.toString();
   return `${API_BASE}/requalified-items/download${query ? `?${query}` : ""}`;
 }
+
+export async function fetchDashboard() {
+  const response = await fetch(`${API_BASE}/dashboard`);
+  return handleResponse(response);
+}
