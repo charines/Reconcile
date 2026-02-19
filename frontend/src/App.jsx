@@ -21,6 +21,7 @@ const RULE_TYPES = [
   { value: "gerencial", label: "Gerencial" }
 ];
 const IMPORT_PAGE_SIZES = [19, 25, 50];
+const RULE_PAGE_SIZES = [10, 25, 50];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -29,6 +30,11 @@ export default function App() {
 
   const [qualifications, setQualifications] = useState([]);
   const [ruleTypeFilter, setRuleTypeFilter] = useState("financeira");
+  const [rulesSearch, setRulesSearch] = useState("");
+  const [rulesPage, setRulesPage] = useState(1);
+  const [rulesPageSize, setRulesPageSize] = useState(25);
+  const [rulesSortBy, setRulesSortBy] = useState("priority");
+  const [rulesSortDir, setRulesSortDir] = useState("asc");
   const [newRule, setNewRule] = useState({
     keyword: "",
     code: "",
@@ -80,6 +86,7 @@ export default function App() {
   });
 
   const allItemsSearchTerm = allItemsSearch.trim();
+  const rulesSearchTerm = rulesSearch.trim().toLowerCase();
 
   useEffect(() => {
     if (activeTab !== "regras") return;
@@ -150,6 +157,64 @@ export default function App() {
   const allItemsPageCount = useMemo(() => {
     return Math.max(1, Math.ceil(allItemsTotal / allItemsPageSize));
   }, [allItemsTotal, allItemsPageSize]);
+
+  const filteredQualifications = useMemo(() => {
+    if (!rulesSearchTerm) return qualifications;
+    return qualifications.filter((rule) => {
+      const keyword = rule.keyword ? String(rule.keyword) : "";
+      const code = rule.code ? String(rule.code) : "";
+      const description = rule.description ? String(rule.description) : "";
+      return [keyword, code, description].some((value) =>
+        value.toLowerCase().includes(rulesSearchTerm)
+      );
+    });
+  }, [qualifications, rulesSearchTerm]);
+
+  const sortedQualifications = useMemo(() => {
+    const sorted = [...filteredQualifications];
+    if (!rulesSortBy) return sorted;
+
+    const compareValues = (left, right) => {
+      if (left == null && right == null) return 0;
+      if (left == null) return -1;
+      if (right == null) return 1;
+      if (typeof left === "number" && typeof right === "number") {
+        return left - right;
+      }
+      return String(left).localeCompare(String(right), undefined, {
+        numeric: true,
+        sensitivity: "base"
+      });
+    };
+
+    sorted.sort((a, b) => {
+      const leftValue =
+        rulesSortBy === "priority"
+          ? Number(a.priority) || 0
+          : a[rulesSortBy];
+      const rightValue =
+        rulesSortBy === "priority"
+          ? Number(b.priority) || 0
+          : b[rulesSortBy];
+      const direction = rulesSortDir === "asc" ? 1 : -1;
+      return direction * compareValues(leftValue, rightValue);
+    });
+
+    return sorted;
+  }, [filteredQualifications, rulesSortBy, rulesSortDir]);
+
+  const rulesPageCount = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredQualifications.length / rulesPageSize));
+  }, [filteredQualifications.length, rulesPageSize]);
+
+  const paginatedQualifications = useMemo(() => {
+    const startIndex = (rulesPage - 1) * rulesPageSize;
+    return sortedQualifications.slice(startIndex, startIndex + rulesPageSize);
+  }, [sortedQualifications, rulesPage, rulesPageSize]);
+
+  useEffect(() => {
+    setRulesPage((prev) => (prev > rulesPageCount ? rulesPageCount : prev));
+  }, [rulesPageCount]);
 
   async function loadQualifications(ruleType) {
     try {
@@ -347,6 +412,20 @@ export default function App() {
   function renderSortLabel(label, column) {
     if (importsSortBy !== column) return label;
     return `${label} ${importsSortDir === "asc" ? "▲" : "▼"}`;
+  }
+
+  function handleRulesSort(column) {
+    if (rulesSortBy === column) {
+      setRulesSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setRulesSortBy(column);
+      setRulesSortDir("asc");
+    }
+  }
+
+  function renderRulesSortLabel(label, column) {
+    if (rulesSortBy !== column) return label;
+    return `${label} ${rulesSortDir === "asc" ? "▲" : "▼"}`;
   }
 
   function handleAllItemsSort(column) {
@@ -900,6 +979,7 @@ export default function App() {
                     onChange={(event) => {
                       setRuleTypeFilter(event.target.value);
                       setEditingRuleId(null);
+                      setRulesPage(1);
                     }}
                   >
                     {RULE_TYPES.map((option) => (
@@ -910,7 +990,7 @@ export default function App() {
                   </select>
                 </div>
                 <p className="muted">
-                  {qualifications.length} regras encontradas.
+                  {filteredQualifications.length} regras encontradas.
                 </p>
               </div>
             </section>
@@ -918,22 +998,75 @@ export default function App() {
             <section className="card table-card">
               <div className="table-header">
                 <h2>Regras cadastradas</h2>
-                <span>{qualifications.length} regras</span>
+                <div className="table-actions">
+                  <span>{filteredQualifications.length} regras</span>
+                  <input
+                    className="search-input"
+                    type="text"
+                    value={rulesSearch}
+                    onChange={(event) => {
+                      setRulesSearch(event.target.value);
+                      setRulesPage(1);
+                    }}
+                    placeholder="Pesquisar palavra-chave, codigo ou descricao..."
+                    aria-label="Pesquisar regras"
+                  />
+                </div>
               </div>
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Prioridade</th>
-                      <th>Palavra-chave</th>
-                      <th>Codigo</th>
-                      <th>Descricao</th>
-                      <th>Tipo</th>
+                      <th>
+                        <button
+                          className="sort"
+                          type="button"
+                          onClick={() => handleRulesSort("priority")}
+                        >
+                          {renderRulesSortLabel("Prioridade", "priority")}
+                        </button>
+                      </th>
+                      <th>
+                        <button
+                          className="sort"
+                          type="button"
+                          onClick={() => handleRulesSort("keyword")}
+                        >
+                          {renderRulesSortLabel("Palavra-chave", "keyword")}
+                        </button>
+                      </th>
+                      <th>
+                        <button
+                          className="sort"
+                          type="button"
+                          onClick={() => handleRulesSort("code")}
+                        >
+                          {renderRulesSortLabel("Codigo", "code")}
+                        </button>
+                      </th>
+                      <th>
+                        <button
+                          className="sort"
+                          type="button"
+                          onClick={() => handleRulesSort("description")}
+                        >
+                          {renderRulesSortLabel("Descricao", "description")}
+                        </button>
+                      </th>
+                      <th>
+                        <button
+                          className="sort"
+                          type="button"
+                          onClick={() => handleRulesSort("rule_type")}
+                        >
+                          {renderRulesSortLabel("Tipo", "rule_type")}
+                        </button>
+                      </th>
                       <th>Acoes</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {qualifications.map((q) => (
+                    {paginatedQualifications.map((q) => (
                       <tr key={q.id}>
                         <td>{q.priority}</td>
                         <td>{q.keyword}</td>
@@ -960,13 +1093,56 @@ export default function App() {
                         </td>
                       </tr>
                     ))}
-                    {qualifications.length === 0 ? (
+                    {filteredQualifications.length === 0 ? (
                       <tr>
                         <td colSpan="6">Nenhuma regra cadastrada.</td>
                       </tr>
                     ) : null}
                   </tbody>
                 </table>
+              </div>
+              <div className="pagination">
+                <div className="page-size">
+                  <label>Registros</label>
+                  <select
+                    value={rulesPageSize}
+                    onChange={(event) => {
+                      setRulesPageSize(Number(event.target.value));
+                      setRulesPage(1);
+                    }}
+                  >
+                    {RULE_PAGE_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="pagination-controls">
+                  <button
+                    className="ghost"
+                    onClick={() =>
+                      setRulesPage((prev) => Math.max(1, prev - 1))
+                    }
+                    disabled={rulesPage <= 1}
+                  >
+                    Anterior
+                  </button>
+                  <span>
+                    Pagina {rulesPage} de {rulesPageCount}
+                  </span>
+                  <button
+                    className="ghost"
+                    onClick={() =>
+                      setRulesPage((prev) =>
+                        Math.min(rulesPageCount, prev + 1)
+                      )
+                    }
+                    disabled={rulesPage >= rulesPageCount}
+                  >
+                    Proxima
+                  </button>
+                </div>
               </div>
             </section>
           </>
