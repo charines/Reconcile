@@ -3,6 +3,7 @@ import io
 import os
 import re
 import uuid
+import unicodedata
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Literal
 
@@ -163,8 +164,26 @@ def _load_qualifications(supabase, rule_type: str) -> List[Dict[str, Any]]:
         raise HTTPException(status_code=500, detail=error)
     qualifications = response.data or []
     for q in qualifications:
-        q["_keyword_lower"] = (q.get("keyword") or "").lower()
+        q["_keyword_norm"] = _normalize_text(q.get("keyword") or "")
     return qualifications
+
+
+def _normalize_text(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return ""
+    raw = (
+        raw.replace("“", "\"")
+        .replace("”", "\"")
+        .replace("‘", "'")
+        .replace("’", "'")
+    )
+    normalized = unicodedata.normalize("NFD", raw)
+    without_accents = "".join(
+        ch for ch in normalized if unicodedata.category(ch) != "Mn"
+    )
+    cleaned = re.sub(r"[^0-9a-z]+", " ", without_accents)
+    return " ".join(cleaned.split())
 
 
 def _apply_qualifications(
@@ -178,11 +197,11 @@ def _apply_qualifications(
     output_rows = []
     for row in rows:
         historico = row.get("historico", "")
-        historico_lower = historico.lower()
+        historico_norm = _normalize_text(historico)
         match = None
         for q in qualifications:
-            key = q.get("_keyword_lower", "")
-            if key and key in historico_lower:
+            key = q.get("_keyword_norm", "")
+            if key and key in historico_norm:
                 match = q
                 break
 
@@ -306,20 +325,20 @@ def _build_rule_counts(
     qualifications: List[Dict[str, Any]],
     rows: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    counts: Dict[str, int] = {}
-    for row in rows:
-        code = str(row.get("codigo_qualificacao") or "").strip()
-        desc = str(row.get("descricao_qualificacao") or "").strip()
-        if not code and not desc:
-            continue
-        key = f"{code}||{desc}"
-        counts[key] = counts.get(key, 0) + 1
+    historicos_norm = [
+        _normalize_text(row.get("historico") or "") for row in rows
+    ]
 
     results: List[Dict[str, Any]] = []
     for q in qualifications:
         code = str(q.get("code") or "").strip()
         desc = str(q.get("description") or "").strip()
-        key = f"{code}||{desc}"
+        keyword_norm = _normalize_text(q.get("keyword") or "")
+        count = 0
+        if keyword_norm:
+            count = sum(
+                1 for historico in historicos_norm if keyword_norm in historico
+            )
         results.append(
             {
                 "id": q.get("id"),
@@ -327,7 +346,7 @@ def _build_rule_counts(
                 "code": code or None,
                 "description": desc or None,
                 "rule_type": q.get("rule_type"),
-                "count": counts.get(key, 0),
+                "count": count,
             }
         )
 
