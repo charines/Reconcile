@@ -4,6 +4,7 @@ import {
   deleteImport,
   deleteQualification,
   fetchImportPreview,
+  fetchDashboard,
   fetchRequalifiedItems,
   getDownloadUrl,
   getRequalifiedItemsDownloadUrl,
@@ -22,7 +23,7 @@ const RULE_TYPES = [
 const IMPORT_PAGE_SIZES = [19, 25, 50];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("importar");
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -68,6 +69,8 @@ export default function App() {
   const [allItemsSortDir, setAllItemsSortDir] = useState("desc");
   const [allItemsSearch, setAllItemsSearch] = useState("");
   const [quickRuleOpen, setQuickRuleOpen] = useState(false);
+  const [dashboard, setDashboard] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   const [quickRule, setQuickRule] = useState({
     keyword: "",
     code: "",
@@ -82,6 +85,11 @@ export default function App() {
     if (activeTab !== "regras") return;
     loadQualifications(ruleTypeFilter);
   }, [activeTab, ruleTypeFilter]);
+
+  useEffect(() => {
+    if (activeTab !== "dashboard") return;
+    loadDashboard();
+  }, [activeTab]);
 
   useEffect(() => {
     if (!editingRuleId) {
@@ -152,6 +160,19 @@ export default function App() {
     }
   }
 
+  async function loadDashboard() {
+    setError("");
+    setDashboardLoading(true);
+    try {
+      const data = await fetchDashboard();
+      setDashboard(data);
+    } catch (err) {
+      setError(err.message || "Falha ao carregar dashboard");
+    } finally {
+      setDashboardLoading(false);
+    }
+  }
+
   async function handleCreateOrUpdateRule(event) {
     event.preventDefault();
     setError("");
@@ -178,6 +199,9 @@ export default function App() {
       setEditingRuleId(null);
       await loadQualifications(ruleTypeFilter);
       setStatus("Qualificacao salva.");
+      if (activeTab === "dashboard") {
+        await loadDashboard();
+      }
     } catch (err) {
       setError(err.message || "Falha ao salvar qualificacao");
       setStatus("");
@@ -193,6 +217,9 @@ export default function App() {
       await deleteQualification(id);
       await loadQualifications(ruleTypeFilter);
       setStatus("Regra removida.");
+      if (activeTab === "dashboard") {
+        await loadDashboard();
+      }
     } catch (err) {
       setError(err.message || "Falha ao remover regra");
       setStatus("");
@@ -354,6 +381,9 @@ export default function App() {
       setStatus("Requalificacao concluida.");
       await loadImports();
       await loadAllRequalifiedItems();
+      if (activeTab === "dashboard") {
+        await loadDashboard();
+      }
     } catch (err) {
       setError(err.message || "Falha ao requalificar importacoes");
       setStatus("");
@@ -369,6 +399,9 @@ export default function App() {
       setStatus("Importacao removida.");
       await loadImports();
       await loadAllRequalifiedItems();
+      if (activeTab === "dashboard") {
+        await loadDashboard();
+      }
     } catch (err) {
       setError(err.message || "Falha ao remover importacao");
       setStatus("");
@@ -455,6 +488,13 @@ export default function App() {
       <main className="content">
         <div className="tabs">
           <button
+            className={`tab ${activeTab === "dashboard" ? "active" : ""}`}
+            onClick={() => setActiveTab("dashboard")}
+            type="button"
+          >
+            Dashboard
+          </button>
+          <button
             className={`tab ${activeTab === "importar" ? "active" : ""}`}
             onClick={() => setActiveTab("importar")}
             type="button"
@@ -476,6 +516,121 @@ export default function App() {
             Cadastrar regras
           </button>
         </div>
+
+        {activeTab === "dashboard" ? (
+          <>
+            <section className="grid metrics-grid">
+              {dashboardLoading ? (
+                <div className="card">Carregando dashboard...</div>
+              ) : (
+                <>
+                  <div className="card metric">
+                    <p className="metric-label">Registros</p>
+                    <p className="metric-value">
+                      {dashboard?.total_records ?? 0}
+                    </p>
+                  </div>
+                  <div className="card metric">
+                    <p className="metric-label">Empresas</p>
+                    <p className="metric-value">
+                      {dashboard?.total_companies ?? 0}
+                    </p>
+                  </div>
+                  <div className="card metric">
+                    <p className="metric-label">Contas (Agencia/Conta)</p>
+                    <p className="metric-value">
+                      {dashboard?.total_accounts ?? 0}
+                    </p>
+                  </div>
+                  <div className="card metric">
+                    <p className="metric-label">Arquivos importados</p>
+                    <p className="metric-value">
+                      {dashboard?.total_imports ?? 0}
+                    </p>
+                  </div>
+                  <div className="card metric">
+                    <p className="metric-label">Regras cadastradas</p>
+                    <p className="metric-value">
+                      {dashboard?.total_rules ?? 0}
+                    </p>
+                  </div>
+                  <div className="card metric">
+                    <p className="metric-label">Registros sem regra</p>
+                    <p className="metric-value">
+                      {dashboard?.unqualified_records ?? 0}
+                    </p>
+                  </div>
+                </>
+              )}
+            </section>
+
+            <section className="grid dashboard-lists">
+              <div className="card table-card">
+                <div className="table-header">
+                  <h2>Regras cadastradas (itens)</h2>
+                  <span>{dashboard?.items_per_rule?.length ?? 0} regras</span>
+                </div>
+                <div className="table-wrap scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Palavra-chave</th>
+                        <th>Codigo</th>
+                        <th>Descricao</th>
+                        <th>Itens</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(dashboard?.items_per_rule || []).map((rule) => (
+                        <tr key={rule.id || `${rule.code}-${rule.description}`}>
+                          <td>{rule.keyword}</td>
+                          <td>{rule.code}</td>
+                          <td>{rule.description}</td>
+                          <td>{rule.count}</td>
+                        </tr>
+                      ))}
+                      {(dashboard?.items_per_rule || []).length === 0 ? (
+                        <tr>
+                          <td colSpan="4">Nenhuma regra encontrada.</td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="card table-card">
+                <div className="table-header">
+                  <h2>Historicos sem regra</h2>
+                  <span>{dashboard?.unqualified_histories?.length ?? 0} itens</span>
+                </div>
+                <div className="table-wrap scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Historico</th>
+                        <th>Quantidade</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(dashboard?.unqualified_histories || []).map((item) => (
+                        <tr key={item.historico}>
+                          <td>{item.historico}</td>
+                          <td>{item.count}</td>
+                        </tr>
+                      ))}
+                      {(dashboard?.unqualified_histories || []).length === 0 ? (
+                        <tr>
+                          <td colSpan="2">Nenhum historico pendente.</td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </>
+        ) : null}
 
         {activeTab === "importar" ? (
           <>

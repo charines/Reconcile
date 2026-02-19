@@ -251,6 +251,37 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.metrics-grid {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.metric-label {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.metric-value {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 2rem;
+}
+
+.dashboard-lists {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.table-wrap.scroll {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
 .search-input {
   min-width: 220px;
   flex: 1 1 220px;
