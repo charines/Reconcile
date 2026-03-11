@@ -21,10 +21,23 @@ HEADER_ALIASES = {
         "valor r$",
         "valor (r$)",
         "valor (rs)",
-        "valor (r$)",
-        "valor (rs)",
-        "valor r$",
         "amount",
+    },
+    "credito": {
+        "credito",
+        "crédito",
+        "credito (r$)",
+        "crédito (r$)",
+        "créditos",
+        "creditos",
+    },
+    "debito": {
+        "debito",
+        "débito",
+        "debito (r$)",
+        "débito (r$)",
+        "débitos",
+        "debitos",
     },
     "historico": {
         "historico",
@@ -39,6 +52,8 @@ HEADER_ALIASES = {
         "hist",
         "detalhe",
         "details",
+        "lancamento",
+        "lançamento",
     },
 }
 
@@ -120,7 +135,11 @@ def _find_header_start(lines: List[str]) -> Tuple[int, str]:
             resolved = _resolve_header(field)
             if resolved:
                 hits.add(resolved)
-        if hits.issuperset(EXPECTED_HEADERS):
+
+        has_data = "data" in hits
+        has_historico = "historico" in hits
+        has_valor = "valor" in hits or ("credito" in hits and "debito" in hits)
+        if has_data and has_historico and has_valor:
             return idx, delimiter
     # fallback: use first line delimiter if no header was found
     first_line = lines[0] if lines else ""
@@ -128,7 +147,17 @@ def _find_header_start(lines: List[str]) -> Tuple[int, str]:
 
 
 def read_csv(content: bytes) -> Tuple[List[Dict[str, str]], List[str]]:
-    text = content.decode("utf-8", errors="replace")
+    # Tenta diferentes encodings
+    text = ""
+    for encoding in ["utf-8", "latin-1", "cp1252"]:
+        try:
+            text = content.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = content.decode("utf-8", errors="replace")
+
     lines = text.splitlines()
     header_idx, delimiter = _find_header_start(lines)
     csv_text = "\n".join(lines[header_idx:])
@@ -142,22 +171,49 @@ def read_csv(content: bytes) -> Tuple[List[Dict[str, str]], List[str]]:
         if resolved and resolved not in header_map:
             header_map[resolved] = field
 
-    missing = [h for h in EXPECTED_HEADERS if h not in header_map]
-    if missing:
+    has_data = "data" in header_map
+    has_historico = "historico" in header_map
+    has_valor = "valor" in header_map or ("credito" in header_map and "debito" in header_map)
+
+    if not has_data or not has_historico or not has_valor:
+        missing = []
+        if not has_data: missing.append("data")
+        if not has_historico: missing.append("historico")
+        if not has_valor: missing.append("valor / (credito e debito)")
         raise ValueError(f"CSV sem colunas obrigatorias: {', '.join(missing)}")
 
     rows = []
     for row in reader:
-        data_raw = row.get(header_map["data"], "")
-        valor_raw = row.get(header_map["valor"], "")
-        historico_raw = row.get(header_map["historico"], "")
+        data_raw = row.get(header_map.get("data", ""), "")
+        historico_raw = row.get(header_map.get("historico", ""), "")
+        
+        # Processamento do valor
+        if "valor" in header_map:
+            valor_raw = row.get(header_map["valor"], "")
+        else:
+            credito = row.get(header_map.get("credito", ""), "")
+            debito = row.get(header_map.get("debito", ""), "")
+            if credito and credito.strip():
+                valor_raw = credito
+            elif debito and debito.strip():
+                valor_raw = debito
+            else:
+                valor_raw = "0"
+
+        data_iso = parse_date(str(data_raw))
+        # Pula linhas que não tem uma data válida (ex: "Total")
+        if data_iso == data_raw and not (len(data_iso) == 10 and data_iso[4] == '-' and data_iso[7] == '-'):
+            continue
+            
+        if not str(historico_raw).strip():
+            continue
 
         rows.append(
             {
-                "data": parse_date(str(data_raw)),
+                "data": data_iso,
                 "valor": parse_value(str(valor_raw)),
                 "historico": str(historico_raw).strip(),
             }
         )
 
-    return rows, reader.fieldnames
+    return rows, list(reader.fieldnames or [])
